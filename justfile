@@ -56,24 +56,34 @@ image:
 
 # --- Google Cloud (Terraform in infra/; state in the same bucket as DocPilot, own prefix) ---
 
+# One-time: point Terraform at the shared state bucket (<project>-tfstate, prefix keel)
+infra-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    project=$(gcloud config get-value project 2>/dev/null)
+    cd infra && GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token) \
+        terraform init -input=false -backend-config="bucket=${project}-tfstate"
+
 # Run Terraform, e.g. `just infra plan`, `just infra apply`
 infra *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)
     # The Cloudflare token for DNS lives in Secret Manager; read for this run only, never written
     export CLOUDFLARE_API_TOKEN=$(gcloud secrets versions access latest --secret=cloudflare-api-token)
     cd infra && terraform {{args}}
 
-# Store an app secret in Secret Manager from a hidden prompt (keel-database-url, keel-session-secret)
+# Store an app secret from a hidden prompt (keel-database-url, keel-anthropic-api-key; keel-session-secret: empty = generate)
 secret name:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{name}}" in
-        keel-database-url|keel-session-secret) ;;
+        keel-database-url|keel-anthropic-api-key|keel-session-secret) ;;
         *) echo "Unknown secret '{{name}}'" >&2; exit 1 ;;
     esac
     read -rsp "Value for {{name}} (hidden): " value; echo
+    if [ -z "$value" ] && [ "{{name}}" = keel-session-secret ]; then value=$(openssl rand -base64 48 | tr -d '\n'); fi
     [ -n "$value" ] || { echo "Empty value, nothing stored." >&2; exit 1; }
     # Piped, not passed as an argument (other processes can see arguments), with no newline
-    printf '%s' "$value" | gcloud secrets versions add "{{name}}" --data-file=-
+    printf '%s' "$value" | gcloud secrets versions add "{{name}}" --data-file=- >/dev/null
     echo "Stored a new version of {{name}}."

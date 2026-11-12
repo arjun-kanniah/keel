@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgresql://keel:keel@localhost:5434/keel
+      TEST_DATABASE_URL: postgresql://keel:keel@localhost:5434/keel_test
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_PASSWORD: keel
+          POSTGRES_DB: keel
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U keel -d keel"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: just setup
+      - run: just migrate
+      - run: just lint
+      - run: npx vitest run
+      - run: npx next build
+
+  # The agent eval set, on the real model. Runs when the prompt, tools, agent, help pages or
+  # cases change, and on main. Skips itself when the ANTHROPIC_API_KEY secret isn't set.
+  eval:
+    needs: check
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgresql://keel:keel@localhost:5434/keel
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SESSION_SECRET: ci-only-session-secret-not-used-for-anything-real
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_PASSWORD: keel
+          POSTGRES_DB: keel
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U keel -d keel"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did anything the agent depends on change?
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          base="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$base" HEAD | grep -qE '^(src/lib/(agent|tools|policy|ratebook|help)/|help/|evals/|scripts/eval.ts|package-lock.json)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: jdx/mise-action@v2
+        if: steps.changed.outputs.run == 'true'
+      - if: steps.changed.outputs.run == 'true'
+        run: just setup && just migrate
+      - if: steps.changed.outputs.run == 'true'
+        # Haiku keeps a full run to a few cents; run Sonnet locally before changing the default model
+        run: npx tsx scripts/eval.ts --model claude-haiku-5-5
+      - if: always() && steps.changed.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-run
+          path: eval-runs/
+          if-no-files-found: ignore
+
+  # Build, migrate and roll out to Cloud Run with cloudrun-blueprint's reusable workflow.
+  # Skipped until the repo variables exist (from `just infra output`). No Google keys are stored:
+  # GitHub's OIDC token is exchanged through Workload Identity Federation, main branch only.
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_DEPLOY_SA != ''
+    permissions:
+      contents: read
+      id-token: write
+    uses: arjun-kanniah/cloudrun-blueprint/.github/workflows/deploy.yml@v0.1.0
+    with:
+      workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+      service_account: ${{ vars.GCP_DEPLOY_SA }}
+      region: ${{ vars.GCP_REGION }}
+      service: keel-app
+      image: ${{ vars.GCP_IMAGE }}
+      jobs: keel-app-migrate
+      health_path: /api/healthz
+      public_url: https://keel.arjunkanniah.dev

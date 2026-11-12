@@ -1,0 +1,21 @@
+# Local development services only. Credentials here are for a throwaway local database.
+# Port 5434 so it can run next to other projects' Postgres on 5432/5433.
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: keel
+      POSTGRES_PASSWORD: keel
+      POSTGRES_DB: keel
+    ports:
+      - "5434:5432"
+    volumes:
+      - keel-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keel -d keel"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  keel-db:

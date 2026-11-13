@@ -9,6 +9,8 @@ undo. The same tools are served over **MCP**, so Claude Desktop can use them wit
 
 Live demo: **https://keel.arjunkanniah.dev** · How it works: the `/architecture` page
 
+![Priya (Admin) asks for a 10% rise on Commercial HVAC; the assistant shows a preview of all 8 rates; she approves, then undoes it. A 30% Plumbing rise needs an Owner, so Dana (Owner) approves it from the Changes page. A record note telling the assistant to delete everything is ignored. The trace shows every step, and the same tools are available to Claude Desktop over MCP.](docs/keel-demo.gif)
+
 The hard part of an action-taking agent isn't the model call. It's making sure that what the
 model asks for is checked, previewed, approved, applied without clobbering anyone, reversible,
 and recorded. That is what this project is about.

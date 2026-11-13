@@ -7,7 +7,7 @@
 questions from the help center and prepares changes that the user previews, approves and can
 undo. The same tools are served over **MCP**, so Claude Desktop can use them with the same rules.
 
-Live demo: **https://keel.arjunkanniah.dev** (not deployed yet) · How it works: the `/architecture` page
+Live demo: **https://keel.arjunkanniah.dev** · How it works: the `/architecture` page
 
 The hard part of an action-taking agent isn't the model call. It's making sure that what the
 model asks for is checked, previewed, approved, applied without clobbering anyone, reversible,

@@ -4,7 +4,7 @@ import { loadRun } from "@/lib/agent/trace";
 import { when } from "@/lib/format";
 import { pageActor } from "@/lib/http/handler";
 
-const pillFor = (s: string) => (s.startsWith("awaiting") || s === "waiting for user" ? "warn" : s === "error" || s === "denied" || s === "refused" ? "bad" : "good");
+const pillFor = (s: string) => (s.startsWith("awaiting") || s === "waiting for user" ? "warn" : s === "error" || s === "denied" || s === "refused" || s === "conflict" ? "bad" : "good");
 
 export default async function Trace({ params }: { params: Promise<{ id: string }> }) {
   const actor = await pageActor();

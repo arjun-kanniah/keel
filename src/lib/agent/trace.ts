@@ -58,6 +58,11 @@ export async function appendSpan(runId: string, kind: SpanKind, name: string, de
   mirror(runId, kind, name, detail, 0);
 }
 
+/** After a person acts on a run's changeset, the run's status follows it (it was "awaiting approval"). */
+export async function setRunStatus(runId: string, status: string) {
+  await q("UPDATE agent_runs SET status = $2 WHERE id = $1", [runId, status]);
+}
+
 export interface RunRow {
   id: string;
   userName: string;

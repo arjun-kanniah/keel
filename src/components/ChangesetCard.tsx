@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { money, mult, pct } from "@/lib/format";
 import type { Changeset, Op } from "@/lib/ratebook/types";
 
@@ -107,6 +107,25 @@ export function ChangesetCard({
   // One key per approval attempt: a retried click (or a network retry) can't apply twice
   const idem = useRef<string>(crypto.randomUUID());
   const isOwner = viewer.scopes.includes("changes:approve_large");
+
+  // A card can outlive its changeset's status (restored in the assistant panel, or acted on
+  // elsewhere, e.g. by an Owner on the Changes page), so an open card checks the current state.
+  useEffect(() => {
+    if (changeset.status !== "proposed" && changeset.status !== "awaiting_owner") return;
+    let live = true;
+    fetch(`/api/v1/changesets/${changeset.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (live && j?.changeset && j.changeset.status !== changeset.status) {
+          setCs(j.changeset);
+          onChange?.(j.changeset);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [changeset.id, changeset.status]);
   const canWrite = viewer.role !== "viewer";
 
   async function act(action: "apply" | "undo" | "cancel" | "request-approval") {

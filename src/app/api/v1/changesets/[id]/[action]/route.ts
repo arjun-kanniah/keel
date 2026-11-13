@@ -1,4 +1,4 @@
-import { appendSpan } from "@/lib/agent/trace";
+import { appendSpan, setRunStatus } from "@/lib/agent/trace";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 import { AppError, badRequest, notFound } from "@/lib/errors";
 import { requireActor, route } from "@/lib/http/handler";
@@ -15,6 +15,7 @@ export const POST = route<{ params: Promise<{ id: string; action: string }> }>(a
   const runId = before.runId;
   const note = (kind: Parameters<typeof appendSpan>[1], name: string, detail: string) =>
     runId ? appendSpan(runId, kind, name, detail) : Promise.resolve();
+  const runStatus = (status: string) => (runId ? setRunStatus(runId, status) : Promise.resolve());
 
   try {
     switch (action) {
@@ -24,21 +25,25 @@ export const POST = route<{ params: Promise<{ id: string; action: string }> }>(a
         const cs = await apply(actor, id, key);
         await note("human", "approved", `${who} approved ${id}`);
         await note("write", "apply_changeset", `${cs.ops.length} ops in one transaction, versions checked`);
+        await runStatus("applied");
         return { changeset: cs };
       }
       case "undo": {
         const cs = await undo(actor, id);
         await note("write", "undo_changeset", `${who} undid ${id}; ${cs.ops.length} values restored`);
+        await runStatus("undone");
         return { changeset: cs };
       }
       case "cancel": {
         const cs = await cancel(actor, id);
         await note("human", "cancelled", `${who} cancelled ${id}; nothing written`);
+        await runStatus("cancelled");
         return { changeset: cs };
       }
       case "request-approval": {
         const cs = await requestApproval(actor, id);
         await note("human", "approval_requested", `${who} sent ${id} to an Owner`);
+        await runStatus("awaiting approval (owner)");
         return { changeset: cs };
       }
       default:
@@ -47,6 +52,7 @@ export const POST = route<{ params: Promise<{ id: string; action: string }> }>(a
   } catch (e) {
     if (e instanceof AppError && action === "apply") {
       await note(e.status === 409 ? "write" : "policy", "apply_rejected", `${who}: ${e.status} ${e.message}`);
+      if (e.status === 409) await runStatus("conflict");
     }
     throw e;
   }

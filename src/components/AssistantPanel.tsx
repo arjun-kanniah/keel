@@ -306,7 +306,12 @@ export function AssistantPanel({
                 )}
                 {t.previews.map((p) => (
                   <div key={p.id} style={{ marginTop: 8 }}>
-                    <ChangesetCard changeset={p} viewer={{ role: user.role, scopes: user.scopes }} compact />
+                    <ChangesetCard
+                      changeset={p}
+                      viewer={{ role: user.role, scopes: user.scopes }}
+                      compact
+                      onChange={(cs) => update(t.id, (x) => ({ ...x, previews: x.previews.map((y) => (y.id === cs.id ? cs : y)) }))}
+                    />
                   </div>
                 ))}
                 {t.form && (
